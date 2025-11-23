@@ -34,3 +34,30 @@ export const updateUser = async (userId, userData) => {
     throw new Error(error.message);
   }
 };
+
+// Sauvegarder les données de pesage pour un utilisateur
+export const savePesageEntries = async (userId, entries) => {
+  if (!userId) throw new Error("Un identifiant utilisateur est requis pour sauvegarder les données.");
+  try {
+    // Les données sont stockées sous un chemin spécifique à l'utilisateur
+    await set(ref(database, `pesageData/${userId}`), entries);
+    return { success: true };
+  } catch (error) {
+    throw new Error(error.message);
+  }
+};
+
+// Récupérer les données de pesage pour un utilisateur
+export const getPesageEntries = async (userId) => {
+  if (!userId) throw new Error("Un identifiant utilisateur est requis pour récupérer les données.");
+  try {
+    const snapshot = await get(ref(database, `pesageData/${userId}`));
+    if (snapshot.exists()) {
+      return snapshot.val(); // Retourne les données si elles existent
+    } else {
+      return []; // Retourne un tableau vide si aucune donnée n'est trouvée
+    }
+  } catch (error) {
+    throw new Error(error.message);
+  }
+};

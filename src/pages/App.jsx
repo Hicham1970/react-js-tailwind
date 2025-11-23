@@ -3,25 +3,20 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 import * as XLSX from 'xlsx';
 import { ChevronUpIcon, ChevronDownIcon, ArrowDownTrayIcon, TrashIcon, PencilSquareIcon, ScaleIcon, CalculatorIcon, DocumentPlusIcon } from '@heroicons/react/24/solid';
-import { useUser } from '../hooks/Hooks';
+import { useUser, useAlert } from '../hooks/Hooks';
+import { getPesageEntries, savePesageEntries } from '../api/api';
 
 
         const App = () => {
             // Utilisation du hook global pour le chargement
             // Le UserContext gère déjà l'état de l'utilisateur et le chargement.
             // Nous avons juste besoin de récupérer ces informations ici.
-            const { user, isLoading } = useUser();
+            const { user, isLoading: isUserLoading } = useUser();
+            const { dispatchAlert } = useAlert();
 
             // État pour stocker les entrées
-            const [entries, setEntries] = useState(() => {
-                try {
-                    const saved = localStorage.getItem('sacem_pesage_data');
-                    return saved ? JSON.parse(saved) : [];
-                } catch (e) {
-                    console.error("Erreur de lecture localStorage", e);
-                    return [];
-                }
-            });
+            const [entries, setEntries] = useState([]);
+            const [isDataLoading, setIsDataLoading] = useState(true);
 
             const [searchQuery, setSearchQuery] = useState('');
             const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
@@ -106,9 +101,36 @@ import { useUser } from '../hooks/Hooks';
                 ? (parseFloat(formData.grossWeight) - parseFloat(formData.tareWeight)).toFixed(2)
                 : '0.00';
 
-            // Sauvegarde automatique dans le navigateur
+            // Effet pour charger les données depuis Firebase au démarrage
             useEffect(() => {
-                localStorage.setItem('sacem_pesage_data', JSON.stringify(entries));
+                if (user?.uid) {
+                    const fetchEntries = async () => {
+                        setIsDataLoading(true);
+                        try {
+                            const userEntries = await getPesageEntries(user.uid);
+                            setEntries(userEntries || []);
+                        } catch (error) {
+                            dispatchAlert({ type: "SHOW", payload: "Erreur lors du chargement des données.", variant: "Danger" });
+                        } finally {
+                            setIsDataLoading(false);
+                        }
+                    };
+                    fetchEntries();
+                }
+            }, [user?.uid]);
+
+            // Effet pour sauvegarder les données sur Firebase à chaque changement
+            useEffect(() => {
+                if (user?.uid && !isDataLoading) { // Ne pas sauvegarder pendant le chargement initial
+                    const save = async () => {
+                        try {
+                            await savePesageEntries(user.uid, entries);
+                        } catch (error) {
+                            dispatchAlert({ type: "SHOW", payload: `Erreur de sauvegarde: ${error.message}`, variant: "Danger" });
+                        }
+                    };
+                    save();
+                }
             }, [entries]);
 
             const handleInputChange = (e) => {
@@ -258,26 +280,25 @@ import { useUser } from '../hooks/Hooks';
 
             const handleResetData = () => {
                 if (confirm('Êtes-vous sûr de vouloir supprimer toutes les données ? Cette action est irréversible.')) {
-                    setEntries([]); // Efface les entrées
-                    localStorage.removeItem('sacem_pesage_data'); // Efface les données du localStorage
+                    setEntries([]); // Efface les entrées de l'état local, ce qui déclenchera la sauvegarde (d'un tableau vide) sur Firebase.
                 }
             };
 
 
 
             // On se fie maintenant au chargeur global.
-            // Si isLoading est true, le Loader global est déjà affiché, donc on ne retourne rien ici.
-            if (isLoading) {
+            // Si l'utilisateur ou les données sont en cours de chargement, on n'affiche rien (le Loader global s'en charge).
+            if (isUserLoading || isDataLoading) {
                 return null;
             }
 
             // Si le chargement est terminé mais qu'il n'y a pas d'utilisateur
-            if (!user) {
+            if (!user && !isUserLoading) {
                 return <div className="text-center mt-20">Vous devez être connecté pour accéder à cette page.</div>;
             }
 
             return (
-                <div className="min-h-screen p-4 md:p-6 max-w-7xl mx-auto">
+                <div className="min-h-screen p-4 md:p-6 max-w-7xl mx-auto ">
                     {/* Header */}
                     <header className="mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-slate-800 text-white p-4 md:p-6 rounded-lg shadow-lg">
                             <div className="flex items-center gap-4">
@@ -286,15 +307,15 @@ import { useUser } from '../hooks/Hooks';
                             </div>
                             <div>
                                 <h1 className="text-xl md:text-2xl font-bold">SACEM - Gestion de Pesage</h1>
-                                <p className="text-slate-300 text-sm">Opérations Manganèse - Dépôt Sahraoui</p>
+                                <p className="text-slate-400 dark:text-slate-300 text-sm">Opérations Manganèse - Dépôt Sahraoui</p>
                                 <div className="mt-2 flex items-center gap-4">
                                     <div>
                                         <label className="text-xs text-slate-400 uppercase">Début Pesage</label>
-                                        <input type="date" className="mt-1 bg-slate-700 border border-slate-600 rounded px-2 py-1 text-sm" disabled value={operationStartDate} />
+                                        <input type="date" className="mt-1 bg-slate-700 border border-slate-600 rounded px-2 py-1 text-sm text-white" disabled value={operationStartDate} />
                                     </div>
                                     <div>
                                         <label className="text-xs text-slate-400 uppercase">Fin Pesage</label>
-                                        <input type="date" className="mt-1 bg-slate-700 border border-slate-600 rounded px-2 py-1 text-sm" disabled value={operationEndDate} />
+                                        <input type="date" className="mt-1 bg-slate-700 border border-slate-600 rounded px-2 py-1 text-sm text-white" disabled value={operationEndDate} />
                                     </div>
                                 </div>
                             </div>
@@ -314,8 +335,7 @@ import { useUser } from '../hooks/Hooks';
                                 >
                                     <ArrowDownTrayIcon className="w-4 h-4" /> Exporter
                                 </button>
-                                {isExportMenuOpen && (
-                                    <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg z-10 text-slate-700 text-sm">
+                                {isExportMenuOpen && ( <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-slate-800 rounded-md shadow-lg z-10 text-slate-700 dark:text-slate-200 text-sm border dark:border-slate-700">
                                         <a
                                             href="#"
                                             onClick={exportToExcel}
@@ -326,7 +346,7 @@ import { useUser } from '../hooks/Hooks';
                                         <a
                                             href="#"
                                             onClick={exportToCsv}
-                                            className="block px-4 py-2 hover:bg-slate-100 rounded-b-md"
+                                            className="block px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-b-md"
                                         >
                                             Exporter en <strong>.CSV</strong> (Texte)
                                         </a>
@@ -339,22 +359,22 @@ import { useUser } from '../hooks/Hooks';
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                         {/* Formulaire de saisie */}
                         <div className="lg:col-span-1">
-                            <div className="glass-panel p-6 rounded-xl sticky top-6">
-                                <h2 className="text-lg font-bold mb-4 text-slate-700 border-b pb-2 flex items-center gap-2">
+                            <div className="bg-white dark:bg-slate-800/50 p-6 rounded-xl sticky top-24 shadow-md border border-slate-200 dark:border-slate-700">
+                                <h2 className="text-lg font-bold mb-4 text-slate-700 dark:text-slate-200 border-b dark:border-slate-600 pb-2 flex items-center gap-2">
                                     <DocumentPlusIcon className="w-5 h-5 text-blue-600" />
-                                    Nouvelle Pesée
+                                    {editingEntryId ? 'Modifier la Pesée' : 'Nouvelle Pesée'}
                                 </h2>
                                 <form onSubmit={handleSubmit} className="space-y-4">
 
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                         <div>
                                             <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Date</label>
-                                            <input
+                                            <input 
                                                 type="date"
                                                 name="date"
                                                 value={formData.date}
                                                 onChange={handleInputChange}
-                                                className="w-full p-2 border rounded bg-slate-50 focus:ring-2 focus:ring-blue-500 outline-none"
+                                                className="w-full p-2 border dark:border-slate-600 rounded bg-slate-50 dark:bg-slate-700 focus:ring-2 focus:ring-blue-500 outline-none"
                                             />
                                         </div>
                                         <div>
@@ -365,7 +385,7 @@ import { useUser } from '../hooks/Hooks';
                                                 placeholder="Ex: 5491"
                                                 value={formData.ticket}
                                                 onChange={handleInputChange}
-                                                className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none font-mono"
+                                                className="w-full p-2 border dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 outline-none font-mono bg-white dark:bg-slate-700"
                                                 required
                                             />
                                         </div>
@@ -379,7 +399,7 @@ import { useUser } from '../hooks/Hooks';
                                             placeholder="Ex: TCKU 143 002 8"
                                             value={formData.objectRef}
                                             onChange={handleInputChange}
-                                            className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none font-mono uppercase"
+                                            className="w-full p-2 border dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 outline-none font-mono uppercase bg-white dark:bg-slate-700"
                                             required
                                         />
                                     </div>
@@ -393,7 +413,7 @@ import { useUser } from '../hooks/Hooks';
                                                 name="grossWeight"
                                                 value={formData.grossWeight}
                                                 onChange={handleInputChange}
-                                                className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-700"
+                                                className="w-full p-2 border dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-700 dark:text-white bg-white dark:bg-slate-700"
                                                 required
                                             />
                                         </div>
@@ -405,13 +425,13 @@ import { useUser } from '../hooks/Hooks';
                                                 name="tareWeight"
                                                 value={formData.tareWeight}
                                                 onChange={handleInputChange}
-                                                className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none text-slate-600"
+                                                className="w-full p-2 border dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 outline-none text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-700"
                                                 required
                                             />
                                         </div>
                                     </div>
 
-                                    <div className="bg-blue-50 p-3 rounded border border-blue-100 text-center">
+                                    <div className="bg-blue-50 dark:bg-blue-900/50 p-3 rounded border border-blue-100 dark:border-blue-800 text-center">
                                         <span className="block text-xs text-blue-500 uppercase font-bold">Poids Net Calculé</span>
                                         <span className="text-2xl font-bold text-blue-700">{currentNetWeight} t</span>
                                     </div>
@@ -424,7 +444,7 @@ import { useUser } from '../hooks/Hooks';
                                                 name="sealOther"
                                                 value={formData.sealOther}
                                                 onChange={handleInputChange}
-                                                className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                                                className="w-full p-2 border dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white dark:bg-slate-700"
                                             />
                                         </div>
                                         <div>
@@ -434,7 +454,7 @@ import { useUser } from '../hooks/Hooks';
                                                 name="sealSGS"
                                                 value={formData.sealSGS}
                                                 onChange={handleInputChange}
-                                                className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                                                className="w-full p-2 border dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white dark:bg-slate-700"
                                             />
                                         </div>
                                     </div>
@@ -463,11 +483,11 @@ import { useUser } from '../hooks/Hooks';
 
                             {/* Cartes Statistiques */}
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <div className="glass-panel p-4 rounded-xl flex items-center justify-between bg-gradient-to-r from-indigo-500 to-blue-500 text-white border-none shadow-lg">
+                                <div className="p-4 rounded-xl flex items-center justify-between bg-gradient-to-r from-indigo-500 to-blue-500 text-white shadow-lg">
                                     <div>
                                         <div className="flex items-center gap-2 mb-1">
                                             <ScaleIcon className="w-10 h-10 text-blue-700" />
-                                            <p className="text-blue-400 text-sm font-medium uppercase tracking-wider">Poids Net Total</p>
+                                             <p className="text-blue-300 dark:text-blue-400 text-sm font-medium uppercase tracking-wider">Poids Net Total</p>
                                         </div>
                                                 <p className="text-2xl md:text-3xl font-bold mt-1 text-black">
                                                     {stats && stats.total !== undefined && stats.total !== null && stats.total !== '' ? stats.total : '0.000'}
@@ -479,36 +499,36 @@ import { useUser } from '../hooks/Hooks';
                                         <svg className="w-5 h-5" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z" /><path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z" /><path d="M7 21h10" /><path d="M12 3v18" /><path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2" /></svg>
                                     </div>
                                 </div>
-                                <div className="glass-panel p-4 rounded-xl flex items-center justify-between bg-white border-l-4 border-blue-500">
+                                <div className="p-4 rounded-xl flex items-center justify-between bg-white dark:bg-slate-800 border-l-4 border-blue-500 shadow-md">
                                     <div>
                                         {/* Affichage explicite du diviseur (nombre de TC) */}
                                         <div className="flex items-center gap-2 mb-1">
                                             <CalculatorIcon className="w-10 h-10 text-blue-700" />
-                                            <p className="text-blue-400 text-sm font-medium uppercase tracking-wider">Moyenne par TC ({stats.count})</p>
+                                             <p className="text-slate-500 dark:text-blue-400 text-sm font-medium uppercase tracking-wider">Moyenne par TC ({stats.count})</p>
                                         </div>
-                                        <p className="text-2xl md:text-3xl font-bold mt-1 text-slate-700">{stats.average} <span className="text-lg font-normal text-slate-400">t</span></p>
+                                        <p className="text-2xl md:text-3xl font-bold mt-1 text-slate-700 dark:text-white">{stats.average} <span className="text-lg font-normal text-slate-400 dark:text-slate-400">t</span></p>
                                     </div>
                                 </div>
                             </div>
 
                             {/* Tableau */}
-                            <div className="glass-panel rounded-xl overflow-hidden flex-grow">
-                                <div className="p-4 border-b bg-slate-50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                                    <h2 className="font-bold text-slate-700 flex-shrink-0">Opérations Récentes</h2>
+                            <div className="bg-white dark:bg-slate-800/50 rounded-xl overflow-hidden flex-grow shadow-md border border-slate-200 dark:border-slate-700">
+                                <div className="p-4 border-b border-slate-200 bg-slate-50 dark:bg-slate-800/50 dark:border-slate-700 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                                    <h2 className="font-bold text-slate-700 dark:text-slate-200 flex-shrink-0">Opérations Récentes</h2>
                                     <div className="flex items-center gap-4 w-full max-w-sm">
                                         <input
                                             type="text"
                                             placeholder="Rechercher (Ticket, TC, Date, Scellé...)"
                                             value={searchQuery}
                                             onChange={(e) => setSearchQuery(e.target.value)}
-                                            className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                                            className="w-full p-2 border dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white dark:bg-slate-700"
                                         />
-                                        <span className="text-xs bg-slate-200 px-2 py-1 rounded text-slate-600 flex-shrink-0">{filteredEntries.length} / {entries.length}</span>
+                                        <span className="text-xs bg-slate-200 dark:bg-slate-700 px-2 py-1 rounded text-slate-600 dark:text-slate-300 flex-shrink-0">{filteredEntries.length} / {entries.length}</span>
                                     </div>
                                 </div>
                                 <div className="overflow-x-auto">
                                     <table className="w-full text-sm text-left">
-                                        <thead className="text-xs text-slate-500 uppercase bg-slate-100">
+                                        <thead className="text-xs text-slate-500 dark:text-slate-400 uppercase bg-slate-100 dark:bg-slate-900">
                                             <tr>
                                                 <th className="px-4 py-3 cursor-pointer" onClick={() => requestSort('date')}>Date{sortConfig.key === 'date' ? (sortConfig.direction === 'ascending' ? <ChevronUpIcon className="inline w-4 h-4"/> : <ChevronDownIcon className="inline w-4 h-4"/>) : null}</th>
                                                 <th className="px-4 py-3 cursor-pointer" onClick={() => requestSort('ticket')}>Ticket{sortConfig.key === 'ticket' ? (sortConfig.direction === 'ascending' ? <ChevronUpIcon className="inline w-4 h-4"/> : <ChevronDownIcon className="inline w-4 h-4"/>) : null}</th>
@@ -520,23 +540,23 @@ import { useUser } from '../hooks/Hooks';
                                                 <th className="px-4 py-3 text-center">Action</th>
                                             </tr>
                                         </thead>
-                                        <tbody className="divide-y divide-slate-200">
+                                        <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
                                             {filteredEntries.length === 0 ? (
                                                 <tr>
-                                                    <td colSpan="8" className="px-4 py-8 text-center text-slate-400">
+                                                    <td colSpan="8" className="px-4 py-8 text-center text-slate-400 dark:text-slate-500">
                                                         {searchQuery ? 'Aucun résultat trouvé pour votre recherche.' : 'Aucune donnée enregistrée. Utilisez le formulaire pour commencer.'}
                                                     </td>
                                                 </tr>
                                             ) : (
                                                 sortedEntries.map((row) => (
-                                                    <tr key={row.id} className="hover:bg-slate-50 transition">
+                                                    <tr key={row.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition">
                                                         <td className="px-4 py-3">{row.date}</td>
                                                         <td className="px-4 py-3 font-mono">{row.ticket}</td>
                                                         <td className="px-4 py-3 font-mono font-medium">{row.objectRef}</td>
                                                         <td className="px-4 py-3 text-right">{row.grossWeight}</td>
-                                                        <td className="px-4 py-3 text-right text-slate-500">{row.tareWeight}</td>
-                                                        <td className="px-4 py-3 text-right font-bold text-blue-600 bg-blue-50/50">{row.netWeight}</td>
-                                                        <td className="px-4 py-3 text-xs text-slate-500">
+                                                        <td className="px-4 py-3 text-right text-slate-500 dark:text-slate-400">{row.tareWeight}</td>
+                                                        <td className="px-4 py-3 text-right font-bold text-blue-600 bg-blue-50/50 dark:bg-blue-900/20">{row.netWeight}</td>
+                                                        <td className="px-4 py-3 text-xs text-slate-500 dark:text-slate-400">
                                                             <div>{row.sealOther}</div>
                                                             <div className="text-slate-400">{row.sealSGS}</div>
                                                         </td>
