@@ -21,3 +21,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+# variables d'environnement.local
+.env
+.env.test
+
