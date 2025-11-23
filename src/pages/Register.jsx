@@ -77,7 +77,7 @@ function Register() {
   };
 
   return (
-    <div className="flex justify-center">
+    <div className="flex justify-center px-4">
       <div className="mt-20">
         <h1 className="font-bold text-3xl mb-5">Register</h1>
         <p className="mb-8">Let's get you started</p>

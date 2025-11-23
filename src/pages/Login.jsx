@@ -63,7 +63,7 @@ function Login() {
   };
 
   return (
-    <div className="flex justify-center">
+    <div className="flex justify-center px-4">
       <div className="mt-20">
         <h1 className="font-bold text-3xl mb-5">Log in</h1>
         <p className="mb-8">Enter your details below to log in</p>

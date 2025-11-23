@@ -6,7 +6,7 @@ function ProfilePage() {
   const { user } = useUser();
   if (!user) return <div>Chargement...</div>;
   return (
-    <div className="flex justify-center mt-20">
+    <div className="flex justify-center mt-20 px-4">
       <Profile username={user.displayName} email={user.email} />
     </div>
   );

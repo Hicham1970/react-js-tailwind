@@ -24,7 +24,7 @@ function Navbar() {
   };
 
   return (
-    <div className="fixed top-0 left-0 right-0 h-16 w-full bg-white bg-opacity-90 flex justify-between items-center px-10 py-5 z-50">
+    <div className="fixed top-0 left-0 right-0 h-16 w-full bg-white bg-opacity-90 flex justify-between items-center px-4 sm:px-6 md:px-10 py-5 z-50">
       <Link to="/" className="text-xl font-semibold">
         Sacem
       </Link>
