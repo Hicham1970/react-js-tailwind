@@ -1,52 +1,64 @@
 import React, { useEffect, useState } from "react";
-import { useAppState, useUser } from "../hooks/Hooks";
-import { Link } from "react-router-dom";
+import { fetchAuthUsers } from "../api/api";
 
 function Users() {
   const [users, setUsers] = useState([]);
-  const [error, setError] = useState(false);
-  const { isLoading, isError } = useAppState();
-  const { user, dispatchUser } = useUser();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    const fetchUsers = async () => {
-      dispatchUser({ type: "LOADING" });
+    async function fetchUsers() {
       try {
-        const res = await fetch("http://localhost:5000/api/v1/users");
-
-        const result = await res.json();
-
-        if (res.ok) {
-          setUsers(result.data);
-        } else {
-          throw new Error();
-        }
-      } catch (error) {
-        setError(true);
-        console.log(error);
+        setLoading(true);
+        const data = await fetchAuthUsers();
+        setUsers(data);
+      } catch (err) {
+        setError(err.message || "Failed to fetch users");
       } finally {
-        // setLoading(false)
-        dispatchUser({ type: "ERROR" });
+        setLoading(false);
       }
-    };
+    }
     fetchUsers();
   }, []);
 
+  if (loading) {
+    return (
+      <div className="flex justify-center mt-20 text-lg text-gray-600">
+        Loading users...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex justify-center mt-20 text-lg text-red-600">
+        Error: {error}
+      </div>
+    );
+  }
+
+  if (users.length === 0) {
+    return (
+      <div className="flex justify-center mt-20 text-lg text-gray-600">
+        No users found.
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-3 grid mt-20 px-10 max-w-2xl mx-auto">
-      {users?.map((user) => {
-        return (
-          <Link
-            to={`/users/${user.username}`}
-            key={user._id}
-            className="flex flex-col gap-2"
+    <div className="mt-10 max-w-4xl mx-auto px-4">
+      <h1 className="text-2xl font-semibold mb-6">User List</h1>
+      <ul className="divide-y divide-gray-300">
+        {users.map((user) => (
+          <li
+            key={user.uid}
+            className="py-3 flex justify-between items-center"
           >
-            <h3 className="font-semibold text-lg">{user.username}</h3>
-            <p>{user.email}</p>
-          </Link>
-        );
-      })}
-      {error && "Something went wrong"}
+            <span className="text-lg text-gray-700">{user.displayName || user.email || user.uid}</span>
+            <span className="text-sm text-gray-500">{user.email || "No email"}</span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

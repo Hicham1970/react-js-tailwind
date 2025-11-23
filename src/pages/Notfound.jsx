@@ -5,15 +5,15 @@ function Notfound() {
 
   //   TODO: Redirect after specific timeout
 
-  //   useEffect(() => {
-  //     setTimeout(() => {
-  //       setTimeOut((prev) => prev - 1);
-  //     }, 1000);
-  //   }, []);
+    useEffect(() => {
+      setTimeout(() => {
+        setTimeOut((prev) => prev - 1);
+      }, 1000);
+    }, []);
 
-  //   setTimeout(() => {
-  //     window.location.href = "/";
-  //   }, 25000);
+    setTimeout(() => {
+      window.location.href = "/";
+    }, 25000);
 
   return (
     <div className="text-center">

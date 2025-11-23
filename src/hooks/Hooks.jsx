@@ -1,25 +1,33 @@
-import React, { useContext } from "react";
+import { useContext } from "react";
 
 import { UserContext } from "../context/UserContext";
 import { AlertContext } from "../context/AlertContext";
 
-export const useUser = () => {
-  const {
-    state: { user },
+const useUser = () => {
+  const context = useContext(UserContext);
+
+  if (!context) {
+    return { user: null, isLoading: false, isError: false, dispatchUser: () => {}, logout: async () => {} };
+  }
+
+  const { state, dispatchUser, logout } = context;
+
+  return {
+    user: state?.user || null,
+    isLoading: state?.isLoading || false,
+    isError: state?.isError || false,
     dispatchUser,
-  } = useContext(UserContext);
-
-  return { user, dispatchUser };
+    logout,
+  };
 };
 
-export const useAppState = () => {
-  const {
-    state: { isLoading, isError },
-  } = useContext(UserContext);
-  return { isLoading, isError };
+const useAppState = () => {
+  const context = useContext(UserContext);
+  const { state } = context || {};
+  return { isLoading: state?.isLoading || false, isError: state?.isError || false };
 };
 
-export const useAlert = () => {
+const useAlert = () => {
   const { alertState, dispatchAlert } = useContext(AlertContext);
 
   return {
@@ -28,6 +36,4 @@ export const useAlert = () => {
   };
 };
 
-export default function Hook() {
-  return;
-}
+export { useUser, useAppState, useAlert };

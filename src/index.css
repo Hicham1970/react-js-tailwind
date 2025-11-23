@@ -6,8 +6,40 @@
      --acc-color: #334155;
      --txt-color: #64748b;
      --heading: #cbd5e1; */
+   body {
+  background-color: #f3f4f6;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+}
 
+.glass-panel {
+  background: white;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+/* Suppression des flèches des inputs number */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
 
      small {
         left: calc(50% - 50px);
      }
+
+/* Global SVG icon coloring: use currentColor so icons inherit parent text color
+   This makes icons adapt to light/dark backgrounds and to Tailwind utility colors. */
+svg {
+  color: inherit; /* allows usage of text-... utilities on parent */
+}
+/* Ensure strokes and fills use currentColor by default */
+svg, svg * {
+  stroke: currentColor !important;
+  fill: currentColor !important;
+}
+
+/* Exceptions: keep explicit background or filled shapes visible when needed */
+svg[fill="none"], svg :where([fill="none"]) {
+  fill: none !important;
+}

@@ -1,18 +1,21 @@
 import React from "react";
 import { useAlert, useUser } from "../hooks/Hooks";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 function Profile({ username, email, password }) {
   const { dispatchAlert } = useAlert();
-  const { dispatchUser } = useUser();
+  const { logout } = useUser();
+  const navigate = useNavigate();
 
-  const handleLogout = () => {
-    dispatchUser({ type: "LOG_OUT" });
-    dispatchAlert({
-      type: "SHOW",
-      payload: "Log out",
-      variant: "Danger",
-    });
+  const handleLogout = async () => {
+    try {
+      await logout(); // utilise le logout centralisé du contexte
+      dispatchAlert({ type: "SHOW", payload: "Vous avez été déconnecté.", variant: "Danger" });
+      navigate("/login");
+    } catch (err) {
+      console.error("Erreur lors de la déconnexion depuis Profile:", err);
+      dispatchAlert({ type: "SHOW", payload: "Erreur lors de la déconnexion.", variant: "Danger" });
+    }
   };
 
   return (
@@ -25,6 +28,12 @@ function Profile({ username, email, password }) {
       </div>
       <p>Email: {email}</p>
       {password}
+      <button
+        onClick={handleLogout}
+        className="w-full bg-red-500 text-white p-2 rounded-lg mt-4"
+      >
+        Déconnexion
+      </button>
       <p className="h-96"></p>
     </div>
   );

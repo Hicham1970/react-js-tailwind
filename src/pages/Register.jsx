@@ -1,20 +1,26 @@
 import { useState, useContext, useEffect } from "react";
 import { UserContext } from "../context/UserContext";
 import { AlertContext } from "../context/AlertContext";
-import { useAppState, useUser } from "../hooks/Hooks";
-import { Link } from "react-router-dom";
+import { useUser } from "../hooks/Hooks";
+import { Link, useNavigate } from "react-router-dom";
+import { auth } from "../firebase"; // Importer l'auth de Firebase
+import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
 
-function Login() {
+function Register() {
   const { dispatchUser } = useContext(UserContext);
   const { dispatchAlert } = useContext(AlertContext);
+  const navigate = useNavigate();
 
   const { user } = useUser();
 
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+
   useEffect(() => {
-    if (user) {
-      window.location.href = "/profile";
-    }
+    // Removed redirect logic to allow access to register page.
+    console.log("Register.jsx useEffect - user:", user);
+    console.log("Register.jsx useEffect - auth.currentUser:", auth.currentUser);
   }, [user]);
+  
 
   const [userDetails, setUserDetails] = useState({
     username: "",
@@ -24,46 +30,39 @@ function Login() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    dispatchUser({ type: "LOADING" });
 
     try {
-      dispatchUser({ type: "LOADING" });
-      const res = await fetch("http://localhost:5000/api/v1/auth/register", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(userDetails),
+      // 1. Créer l'utilisateur avec email et mot de passe
+      const userCredential = await createUserWithEmailAndPassword(
+        auth,
+        userDetails.email,
+        userDetails.password
+      );
+
+      // 2. Mettre à jour le profil pour ajouter le nom d'utilisateur (displayName)
+      await updateProfile(userCredential.user, {
+        displayName: userDetails.username,
       });
 
-      const result = await res.json();
-
-      if (!result.success) {
-        throw new Error(result.error);
-      }
-
-      setTimeout(() => {
-        dispatchUser({ type: "LOG_IN", payload: result.data });
-        dispatchAlert({
-          type: "SHOW",
-          payload: result.message,
-          variant: "Success",
-        });
-        setUserDetails({
-          username: "",
-          email: "",
-          password: "",
-        });
-        window.location.href = "/profile";
-      }, 3000);
-    } catch (err) {
+      // 3. Mettre à jour notre contexte utilisateur
+      dispatchUser({ type: "LOG_IN", payload: userCredential.user });
+      
       dispatchAlert({
         type: "SHOW",
-        payload: err.message,
-        variant: "Warning",
+        payload: "Registration successful!",
+        variant: "Success",
       });
-      dispatchUser({ type: "ERROR" });
-      console.log(err);
-    }
+      // La redirection est gérée par le useEffect
+      } catch (err) {
+        console.error("Registration error:", err);
+        dispatchAlert({
+          type: "SHOW",
+          payload: `Registration failed: ${err.message}`,
+          variant: "Warning",
+        });
+        dispatchUser({ type: "ERROR" });
+      }
   };
 
   const handleChange = (e) => {
@@ -120,4 +119,4 @@ function Login() {
   );
 }
 
-export default Login;
+export default Register;

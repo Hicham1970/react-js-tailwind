@@ -1,20 +1,14 @@
-import { useState, useContext, useEffect } from "react";
+import { useState, useContext } from "react";
 import { UserContext } from "../context/UserContext";
 import { AlertContext } from "../context/AlertContext";
-import { useAppState, useUser } from "../hooks/Hooks";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { auth } from "../firebase"; // Importer l'auth de Firebase
+import { signInWithEmailAndPassword } from "firebase/auth";
 
 function Login() {
   const { dispatchUser } = useContext(UserContext);
   const { dispatchAlert } = useContext(AlertContext);
-
-  const { user } = useUser();
-
-  useEffect(() => {
-    if (user) {
-      window.location.href = "/profile";
-    }
-  }, [user]);
+  const navigate = useNavigate();
 
   const [userDetails, setUserDetails] = useState({
     email: "",
@@ -25,47 +19,35 @@ function Login() {
     e.preventDefault();
 
     try {
-      dispatchUser({ type: "LOADING" });
-      const res = await fetch("http://localhost:5000/api/v1/auth/login", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(userDetails),
+      dispatchUser({ type: "LOADING" }); // Indiquer le chargement
+
+      // Utilisation de Firebase pour la connexion
+      const userCredential = await signInWithEmailAndPassword(
+        auth,
+        userDetails.email,
+        userDetails.password
+      );
+
+      // Mettre à jour le contexte utilisateur
+      dispatchUser({ type: "LOG_IN", payload: userCredential.user });
+      dispatchUser({ type: "SUCCESS" }); // Clear loading
+      
+      dispatchAlert({
+        type: "SHOW",
+        payload: "Log in successful",
+        variant: "Success",
       });
 
-      setUserDetails({
-        username: "",
-        email: "",
-        password: "",
-      });
-
-      const result = await res.json();
-
-      if (!result.success) {
-        throw new Error(result.error);
-      }
-
-      setTimeout(() => {
-        dispatchAlert({
-          type: "SHOW",
-          payload: "Log in successful",
-          variant: "Success",
-        });
-        
-        dispatchUser({ type: "LOG_IN", payload: result.data });
-        window.location.href = "/profile";
-      }, 3000);
-
-      console.log(result);
+      navigate("/dashboard"); // Redirect after login
+      
     } catch (err) {
       dispatchAlert({
         type: "SHOW",
         payload: err.message,
         variant: "Warning",
       });
-      dispatchUser({ type: "ERROR" });
-      console.log(err);
+      dispatchUser({ type: "ERROR" }); // Clear loading and set error
+      console.error(err);
     }
   };
 
