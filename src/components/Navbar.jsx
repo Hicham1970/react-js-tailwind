@@ -29,12 +29,6 @@ function Navbar() {
         Sacem
       </Link>
       <div className="flex gap-2">
-        <Link
-          to="/users"
-          className=" right-10 grid place-content-center bg-blue-700 text-white font-medium text-lg px-5 h-10 w-28 rounded-3xl"
-        >
-          Admin
-        </Link>
         {user && (
           <button
             onClick={handleLogout}
