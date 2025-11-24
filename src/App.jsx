@@ -11,6 +11,7 @@ import ProfilePage from "./pages/ProfilePage";
 import AddTestUsers from "./pages/AddTestUsers";
 import Alert from "./components/Alert";
 import Loader from "./components/Loader";
+import { SpeedInsights } from "@vercel/speed-insights/react"
 
 function App() {
   return (
@@ -20,6 +21,7 @@ function App() {
         <Navbar />
         <Loader />
         <Alert />
+        <SpeedInsights />
         <main className="pt-16">
           <Routes>
             <Route index element={<Home />} />
