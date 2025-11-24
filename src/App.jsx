@@ -16,13 +16,13 @@ import { SpeedInsights } from "@vercel/speed-insights/react"
 function App() {
   return (
 
-    <div className="bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 min-h-screen">
+    <div className="bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 min-h-screen flex flex-col">
       <Router>
         <Navbar />
         <Loader />
         <Alert />
         <SpeedInsights />
-        <main className="pt-16">
+        <main className="pt-16 flex-grow">
           <Routes>
             <Route index element={<Home />} />
             <Route path="/login" element={<Login />} />
@@ -31,6 +31,9 @@ function App() {
             <Route path="/sacempesage" element={<PesageApp />} />
           </Routes>
         </main>
+        <footer className="text-center p-4 text-sm text-slate-500 dark:text-slate-400 border-t border-slate-200 dark:border-slate-800">
+          <p>&copy; 2025 - hicham.garoum@sgs.com</p>
+        </footer>
       </Router>
     </div>
   );

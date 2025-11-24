@@ -28,8 +28,9 @@ function Navbar() {
 
   return (
     <div className="fixed top-0 left-0 right-0 h-16 w-full bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm flex justify-between items-center px-4 sm:px-6 md:px-10 py-5 z-50 border-b border-slate-200 dark:border-slate-800">
-      <Link to="/" className="text-xl font-semibold">
-        Sacem
+      <Link to="/" className="flex items-center gap-2 text-xl font-semibold">
+        <img src="/weight.png" alt="Logo" className="h-7 w-7" />
+        <span>Sacem</span>
       </Link>
       <div className="flex items-center gap-4">
         <button
