@@ -15,24 +15,22 @@ import Loader from "./components/Loader";
 function App() {
   return (
 
-    <Router>
-      <Navbar />
-
-      <div className="bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 min-h-screen">
+    <div className="bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 min-h-screen">
+      <Router>
+        <Navbar />
         <Loader />
         <Alert />
-        <div className="pt-16">
-        <Routes>
-          <Route index element={<Home />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/sacempesage" element={<PesageApp />} />
-        </Routes>
-        </div>
-      </div>
-
-    </Router>
+        <main className="pt-16">
+          <Routes>
+            <Route index element={<Home />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/sacempesage" element={<PesageApp />} />
+          </Routes>
+        </main>
+      </Router>
+    </div>
   );
 }
 

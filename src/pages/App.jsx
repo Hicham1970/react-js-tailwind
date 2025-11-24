@@ -217,36 +217,45 @@ import { getPesageEntries, savePesageEntries } from '../api/api';
                 }
             };
 
-            const exportToExcel = () => {
-                // Préparer les données
-                const dataForExcel = entries.map(row => ({
-                    "Date": row.date,
-                    "N° Ticket": parseInt(row.ticket),
-                    "Référence Conteneur": row.objectRef,
-                    "Poids Brut (t)": parseFloat(row.grossWeight),
-                    "Poids Tare (t)": parseFloat(row.tareWeight),
-                    "Poids Net (t)": parseFloat(row.netWeight),
-                    "Scellé Autre": row.sealOther,
-                    "Scellé SGS": row.sealSGS
-                }));
+            const exportToExcel = (e) => {
+                e.preventDefault(); // Empêche le comportement par défaut du lien
+                setIsExportMenuOpen(false); // Ferme le menu immédiatement
+                try {
+                    // Préparer les données
+                    const dataForExcel = sortedEntries.map(row => ({
+                        "Date": row.date,
+                        "N° Ticket": parseInt(row.ticket) || 0,
+                        "Référence Conteneur": row.objectRef,
+                        "Poids Brut (t)": parseFloat(row.grossWeight) || 0,
+                        "Poids Tare (t)": parseFloat(row.tareWeight) || 0,
+                        "Poids Net (t)": parseFloat(row.netWeight) || 0,
+                        "Scellé Autre": row.sealOther || '',
+                        "Scellé SGS": row.sealSGS
+                    }));
 
-                const ws = XLSX.utils.json_to_sheet(dataForExcel);
+                    const ws = XLSX.utils.json_to_sheet(dataForExcel);
 
-                const wscols = [
-                    { wch: 12 }, { wch: 10 }, { wch: 20 },
-                    { wch: 15 }, { wch: 15 }, { wch: 15 },
-                    { wch: 15 }, { wch: 15 }
-                ];
-                ws['!cols'] = wscols;
+                    const wscols = [
+                        { wch: 12 }, { wch: 10 }, { wch: 20 },
+                        { wch: 15 }, { wch: 15 }, { wch: 15 },
+                        { wch: 15 }, { wch: 15 }
+                    ];
+                    ws['!cols'] = wscols;
 
-                const wb = XLSX.utils.book_new();
-                XLSX.utils.book_append_sheet(wb, ws, "Pesées");
+                    const wb = XLSX.utils.book_new();
+                    XLSX.utils.book_append_sheet(wb, ws, "Pesées");
 
-                XLSX.writeFile(wb, `SACEM_Export_${new Date().toISOString().split('T')[0]}.xlsx`);
+                    XLSX.writeFile(wb, `SACEM_Export_${new Date().toISOString().split('T')[0]}.xlsx`);
+                } catch (error) {
+                    console.error("Erreur lors de l'exportation Excel:", error);
+                    dispatchAlert({ type: "SHOW", payload: "Une erreur est survenue lors de la création du fichier Excel.", variant: "Danger" });
+                }
             };
 
-            const exportToCsv = () => {
-                // Utilise les données complètes, non filtrées, pour être cohérent avec l'export Excel
+            const exportToCsv = (e) => {
+                e.preventDefault(); // Empêche le comportement par défaut du lien
+                setIsExportMenuOpen(false); // Ferme le menu immédiatement
+                // Utilise les données triées et filtrées
                 const headers = [
                     "Date", "N° Ticket", "Référence Conteneur", "Poids Brut (t)",
                     "Poids Tare (t)", "Poids Net (t)", "Scellé Autre", "Scellé SGS"
@@ -254,7 +263,7 @@ import { getPesageEntries, savePesageEntries } from '../api/api';
 
                 const headerString = headers.join(',');
 
-                const csvRows = entries.map(row => {
+                const csvRows = sortedEntries.map(row => {
                     const values = [
                         row.date, row.ticket, row.objectRef, row.grossWeight,
                         row.tareWeight, row.netWeight, row.sealOther, row.sealSGS
@@ -330,8 +339,8 @@ import { getPesageEntries, savePesageEntries } from '../api/api';
                             <div className="relative">
                                 <button
                                     onClick={() => setIsExportMenuOpen(!isExportMenuOpen)}
-                                    onBlur={() => setTimeout(() => setIsExportMenuOpen(false), 150)} // Permet de cliquer sur les liens
-                                    className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 px-4 py-2 rounded-md transition text-sm font-medium shadow-lg border border-emerald-500 text-white"
+                                    // onBlur a été supprimé pour éviter les race conditions. Le menu se ferme au clic sur une option.
+                                    className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 px-4 py-2 rounded-md transition text-sm font-medium shadow-lg text-white"
                                 >
                                     <ArrowDownTrayIcon className="w-4 h-4" /> Exporter
                                 </button>
@@ -339,7 +348,7 @@ import { getPesageEntries, savePesageEntries } from '../api/api';
                                         <a
                                             href="#"
                                             onClick={exportToExcel}
-                                            className="block px-4 py-2 hover:bg-slate-100 rounded-t-md"
+                                            className="block px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-t-md"
                                         >
                                             Exporter en <strong>.XLSX</strong> (Excel)
                                         </a>
