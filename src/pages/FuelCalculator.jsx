@@ -301,7 +301,7 @@ export const FuelCalculator = ({ tanks, onSave }) => {
       {fuelGroups.map(renderTable)}
 
       <div className="p-4 bg-slate-50 border border-slate-200 rounded text-[10px] text-slate-500 italic">
-        * Standard ASTM D1250 Table 54B used for V.C.F calculation. T (In Air) uses density buoyancy factor of -0.0011.
+        * Standard ASTM D1250 Table 54B used for V.C.F calculation. Tab (In Air) uses density buoyancy factor of -0.0011.
       </div>
     </div>
   );
