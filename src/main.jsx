@@ -5,15 +5,18 @@ import App from './App'
 import './index.css'
 import UserProvider from './context/UserContext'
 import AlertProvider from './context/AlertContext' // Assurez-vous que ce fichier existe aussi
+import { AuthProvider } from './context/AuthContext.jsx'
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <UserProvider>
-      <AlertProvider>
-        <BrowserRouter>
-          <App />
-        </BrowserRouter>
-      </AlertProvider>
-    </UserProvider>
+    <AuthProvider>
+      <UserProvider>
+        <AlertProvider>
+          <BrowserRouter>
+            <App />
+          </BrowserRouter>
+        </AlertProvider>
+      </UserProvider>
+    </AuthProvider>
   </React.StrictMode>,
 )

@@ -3,6 +3,8 @@ import { UserContext } from "../context/UserContext";
 import { AlertContext } from "../context/AlertContext";
 import { useAppState, useUser } from "../hooks/Hooks";
 import { Link } from "react-router-dom";
+import { signInWithEmailAndPassword } from "firebase/auth";
+import { auth } from "../firebase";
 
 function Login() {
   const { dispatchUser } = useContext(UserContext);
@@ -26,37 +28,22 @@ function Login() {
 
     try {
       dispatchUser({ type: "LOADING" });
-      const res = await fetch("http://localhost:5000/api/v1/auth/login", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(userDetails),
-      });
+      
+      // Connexion via Firebase
+      const userCredential = await signInWithEmailAndPassword(auth, userDetails.email, userDetails.password);
+      const user = userCredential.user;
 
       setUserDetails({
         email: "",
         password: "",
       });
 
-      const result = await res.json();
-
-      if (!result.success) {
-        throw new Error(result.error);
-      }
-
-      setTimeout(() => {
-        dispatchAlert({
-          type: "SHOW",
-          payload: "Log in successful",
-          variant: "Success",
-        });
-        
-        dispatchUser({ type: "LOG_IN", payload: result.data });
-        window.location.href = "/profile";
-      }, 3000);
-
-      console.log(result);
+      dispatchAlert({
+        type: "SHOW",
+        payload: "Connexion réussie",
+        variant: "Success",
+      });
+      // La redirection sera gérée par le useEffect qui surveille 'user'
     } catch (err) {
       dispatchAlert({
         type: "SHOW",
