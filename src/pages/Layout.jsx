@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { LayoutDashboard, ClipboardList, Bot, Ship, LogOut } from 'lucide-react';
+import { LayoutDashboard, ClipboardList, Bot, Ship, LogOut, Camera } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
 import { auth } from '../firebase';
@@ -11,6 +11,7 @@ export const Layout = ({ children, activeTab, setActiveTab }) => {
     { id: 'surveys', label: 'Surveys', icon: ClipboardList },
     { id: 'ai', label: 'AI Consultant', icon: Bot },
     { id: 'vessels', label: 'Vessels', icon: Ship },
+    { id: 'pictures', label: 'Pictures Report', icon: Camera },
   ];
 
   const navigate = useNavigate();

@@ -11,6 +11,53 @@ export const addUser = async (userId, userData) => {
     }
 };
 
+// Sauvegarder un rapport complet pour un utilisateur
+export const saveFullReport = async (userId, reportData) => {
+    if (!userId) throw new Error("Un identifiant utilisateur est requis pour sauvegarder le rapport.");
+    try {
+        if (reportData.id) {
+            // Mise à jour d'un rapport existant
+            await set(ref(database, `reports/${userId}/${reportData.id}`), reportData);
+            return { success: true, reportId: reportData.id };
+        } else {
+            // Création d'un nouveau rapport
+            const userReportsRef = ref(database, `reports/${userId}`);
+            const newReportRef = push(userReportsRef);
+            await set(newReportRef, { ...reportData, id: newReportRef.key });
+            return { success: true, reportId: newReportRef.key };
+        }
+    } catch (error) {
+        throw new Error(error.message);
+    }
+};
+
+// Récupérer tous les rapports complets pour un utilisateur
+export const getFullReports = async (userId) => {
+    if (!userId) throw new Error("Un identifiant utilisateur est requis pour récupérer les rapports.");
+    try {
+        const snapshot = await get(ref(database, `reports/${userId}`));
+        if (snapshot.exists()) {
+            const data = snapshot.val();
+            return Object.keys(data).map(key => ({ id: key, ...data[key] })).reverse();
+        } else {
+            return [];
+        }
+    } catch (error) {
+        throw new Error(error.message);
+    }
+};
+
+// Supprimer un rapport complet
+export const deleteFullReport = async (userId, reportId) => {
+    if (!userId || !reportId) throw new Error("ID utilisateur et ID rapport requis.");
+    try {
+        await remove(ref(database, `reports/${userId}/${reportId}`));
+        return { success: true };
+    } catch (error) {
+        throw new Error(error.message);
+    }
+};
+
 // Obtention de tous les utilisateurs
 export const getUsers = async () => {
     try {
@@ -143,6 +190,20 @@ export const getVessels = async (userId) => {
             console.warn("Firebase: Permission refusée pour getVessels. Vérifiez les règles de la base de données.");
             return [];
         }
+        throw new Error(error.message);
+    }
+};
+
+// Sauvegarder un rapport photo pour un utilisateur
+export const savePhotoReport = async (userId, reportData) => {
+    if (!userId) throw new Error("Un identifiant utilisateur est requis pour sauvegarder le rapport photo.");
+    try {
+        // On utilise push pour générer un ID unique pour chaque nouveau rapport
+        const userReportsRef = ref(database, `photoReports/${userId}`);
+        const newReportRef = push(userReportsRef);
+        await set(newReportRef, { ...reportData, id: newReportRef.key });
+        return { success: true, reportId: newReportRef.key };
+    } catch (error) {
         throw new Error(error.message);
     }
 };

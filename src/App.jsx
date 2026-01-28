@@ -1,5 +1,5 @@
-import React from 'react';
-import { Routes, Route } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { Routes, Route, useNavigate } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import Alert from './components/Alert';
 import Home from './pages/Home';
@@ -12,8 +12,18 @@ import Profile from './pages/Profile';
 import Dashboard from './pages/Dashboard';
 import Users from './pages/Users';
 import Notfound from './pages/Notfound';
+import { useAuth } from './context/AuthContext';
 
 function App() {
+  const { currentUser } = useAuth();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (currentUser && window.location.pathname === '/') {
+      navigate('/dashboard');
+    }
+  }, [currentUser, navigate]);
+
   return (
     <>
       <Navbar />

@@ -1,13 +1,22 @@
-import React from 'react';
+import React, { useContext } from 'react';
 import { signOut } from 'firebase/auth'; // La fonction signOut standard
 import { auth } from '../firebase'; // L'instance d'authentification
+import { useNavigate } from 'react-router-dom';
+import { AlertContext } from '../context/AlertContext';
 
 const LogoutButton = () => {
+    const navigate = useNavigate();
+    const { dispatchAlert } = useContext(AlertContext);
+
     const handleLogout = async () => {
         try {
             await signOut(auth);
-            alert('Déconnexion réussie.');
-            // Ici, vous pouvez rediriger l'utilisateur vers la page de connexion
+            dispatchAlert({
+                type: "SHOW",
+                payload: "Déconnexion réussie",
+                variant: "Success",
+            });
+            navigate('/login'); // Redirection vers la page de connexion
         } catch (error) {
             console.error('Erreur de déconnexion:', error);
         }

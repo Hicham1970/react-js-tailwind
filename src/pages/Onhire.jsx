@@ -11,7 +11,46 @@ import autoTable from 'jspdf-autotable';
 import { getMaritimeAssistantResponse } from '../services/gemini';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { useAuth } from '../context/AuthContext.jsx';
-import { getSurveys, getVessels, saveSurvey, deleteSurvey } from '../api/api';
+import { getSurveys, getVessels, saveSurvey, deleteSurvey, getFullReports, deleteFullReport } from '../api/api';
+import { useForm, useFieldArray } from "react-hook-form";
+import PicturesReport from '../components/PicturesReport.jsx';
+import FullReport from '../components/reports/FullReport';
+import { z } from "zod";
+import { zodResolver } from "@hookform/resolvers/zod";
+
+// Schéma de validation Zod pour le survey
+const surveySchema = z.object({
+  vesselNameEditable: z.string().min(1, "Nom du navire requis"),
+  vesselImoEditable: z.string().min(1, "IMO requis"),
+  vesselCallSignEditable: z.string().optional(),
+  client: z.string().optional(),
+  owner: z.string().optional(),
+  charterer: z.string().optional(),
+  masterName: z.string().optional(),
+  chiefEngineerName: z.string().optional(),
+  location: z.string().optional(),
+  placeOfDelivery: z.string().optional(),
+  surveyType: z.string(),
+  fromTime: z.string().optional(),
+  toTime: z.string().optional(),
+  // Utilisation de coerce pour transformer les chaînes en nombres automatiquement
+  draftFwd: z.coerce.number().optional(),
+  draftAft: z.coerce.number().optional(),
+  voy: z.string().optional(),
+  list: z.coerce.number().optional(),
+  er: z.coerce.number().optional(),
+  thermometer: z.string().optional(),
+  logBookEntries: z.array(z.object({
+    id: z.number().optional(),
+    pilotStation: z.string().optional(),
+    time: z.string().optional(),
+    date: z.string().optional(),
+    vlsfo: z.coerce.number().optional(),
+    hsfo: z.coerce.number().optional(),
+    mdo: z.coerce.number().optional(),
+    lsmgo: z.coerce.number().optional(),
+  })).optional()
+});
 
 const OnHire = () => {
   const { currentUser, loading } = useAuth();
@@ -19,32 +58,27 @@ const OnHire = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [vessels] = useState(INITIAL_VESSELS);
   const [surveys, setSurveys] = useState([]);
+  const [fullReports, setFullReports] = useState([]);
   const [isLoadingSurveys, setIsLoadingSurveys] = useState(true);
   const [isCreatingSurvey, setIsCreatingSurvey] = useState(false);
   const [selectedVessel, setSelectedVessel] = useState(null);
+  const [selectedReport, setSelectedReport] = useState(null);
   const [detailedVessel, setDetailedVessel] = useState(null);
-  const [surveyDetails, setSurveyDetails] = useState({
-    client: '',
-    owner: '',
-    charterer: '',
-    location: 'New Port Location',
-    placeOfDelivery: '',
-    surveyType: 'ONHIRE SURVEY',
-    fromTime: '',
-    toTime: '',
-    draftFwd: '',
-    draftAft: '',
-    voy: '',
-    list: '',
-    er: '',
-    thermometer: '',
-    vesselNameEditable: '',
-    vesselImoEditable: '',
-    vesselCallSignEditable: '',
-    masterName: '',
-    chiefEngineerName: '',
-    logBookEntries: []
+  
+  // Initialisation de React Hook Form
+  const { register, control, handleSubmit, reset, getValues, trigger, formState: { errors } } = useForm({
+    resolver: zodResolver(surveySchema),
+    defaultValues: {
+      logBookEntries: []
+    }
   });
+
+  // Gestion du tableau dynamique LogBook
+  const { fields, append, remove } = useFieldArray({
+    control,
+    name: "logBookEntries"
+  });
+
   const [initialFuelEntries, setInitialFuelEntries] = useState(null);
   
   // AI Assistant State
@@ -70,6 +104,13 @@ const OnHire = () => {
         .finally(() => {
           setIsLoadingSurveys(false);
         });
+
+      // Charger les rapports complets (Inspection Reports)
+      getFullReports(currentUser.uid)
+        .then(reports => {
+          setFullReports(reports || []);
+        })
+        .catch(error => console.error("Erreur chargement rapports complets:", error));
 
       // Charger les navires personnalisés
       getVessels(currentUser.uid)
@@ -98,7 +139,9 @@ const OnHire = () => {
       tanks: []
     };
     setSelectedVessel(vesselData);
-    setSurveyDetails({
+    setSelectedReport(null);
+    
+    reset({
       client: vesselData.client || '',
       owner: vesselData.owner || '',
       charterer: vesselData.charterer || '',
@@ -119,6 +162,7 @@ const OnHire = () => {
       masterName: '',
       chiefEngineerName: ''
     });
+    
     setInitialFuelEntries(null); // Réinitialiser les données de carburant pour un nouveau survey
     setIsCreatingSurvey(true);
   };
@@ -129,27 +173,37 @@ const OnHire = () => {
       return;
     }
 
+    // Valider le formulaire avant de sauvegarder
+    const isFormValid = await trigger();
+    if (!isFormValid) {
+      alert("Veuillez corriger les erreurs dans le formulaire (champs rouges) avant de sauvegarder.");
+      return;
+    }
+
+    const formData = getValues();
+
     const newSurvey = {
-      vesselName: surveyDetails.vesselNameEditable || selectedVessel.name,
-      vesselImo: surveyDetails.vesselImoEditable || selectedVessel.imo,
-      vesselCallSign: surveyDetails.vesselCallSignEditable || selectedVessel.callSign,
-      masterName: surveyDetails.masterName,
-      chiefEngineerName: surveyDetails.chiefEngineerName,
+      vesselName: formData.vesselNameEditable || selectedVessel.name,
+      vesselImo: formData.vesselImoEditable || selectedVessel.imo,
+      vesselCallSign: formData.vesselCallSignEditable || selectedVessel.callSign,
+      masterName: formData.masterName,
+      chiefEngineerName: formData.chiefEngineerName,
       date: new Date().toISOString().split('T')[0],
-      location: surveyDetails.location,
-      placeOfDelivery: surveyDetails.placeOfDelivery,
-      type: surveyDetails.surveyType,
-      client: surveyDetails.client,
-      charterer: surveyDetails.charterer,
-      owner: surveyDetails.owner,
-      fromTime: surveyDetails.fromTime,
-      toTime: surveyDetails.toTime,
-      draftFwd: surveyDetails.draftFwd,
-      draftAft: surveyDetails.draftAft,
-      voy: surveyDetails.voy,
-      list: surveyDetails.list,
-      er: surveyDetails.er,
-      thermometer: surveyDetails.thermometer,
+      location: formData.location,
+      placeOfDelivery: formData.placeOfDelivery,
+      type: formData.surveyType,
+      client: formData.client,
+      charterer: formData.charterer,
+      owner: formData.owner,
+      fromTime: formData.fromTime,
+      toTime: formData.toTime,
+      draftFwd: formData.draftFwd,
+      draftAft: formData.draftAft,
+      voy: formData.voy,
+      list: formData.list,
+      er: formData.er,
+      thermometer: formData.thermometer,
+      logBookEntries: formData.logBookEntries,
       soundings: entries,
       totalHFO: parseFloat(finalHFO.toFixed(2)),
       totalMGO: parseFloat(finalMGO.toFixed(2)),
@@ -181,6 +235,24 @@ const OnHire = () => {
     }
   };
 
+  const handleEditFullReport = (report) => {
+    setSelectedReport(report);
+    setSelectedVessel(null); // On n'a pas besoin de l'objet vessel complet pour l'édition
+    setActiveTab('pictures');
+  };
+
+  const handleDeleteFullReport = async (reportId) => {
+    if (window.confirm("Êtes-vous sûr de vouloir supprimer ce rapport d'inspection complet ?")) {
+      try {
+        await deleteFullReport(currentUser.uid, reportId);
+        setFullReports(prev => prev.filter(r => r.id !== reportId));
+      } catch (error) {
+        console.error("Erreur suppression rapport:", error);
+        alert("Erreur lors de la suppression du rapport.");
+      }
+    }
+  };
+
   const generateSurveyPDF = async (survey) => {
     const doc = new jsPDF();
 
@@ -204,12 +276,12 @@ const OnHire = () => {
     doc.setFontSize(20);
     doc.setTextColor(40, 40, 40);
     doc.text("BUNKER SURVEY REPORT", 105, 22, null, null, "center");
-    
+
     doc.setFontSize(10);
     doc.setTextColor(100);
     doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 105, 30, null, null, "center");
 
-    // Vessel Info Box
+    // Vessel Info Box with Body Data included
     autoTable(doc, {
       startY: 40,
       head: [['Vessel Particulars', 'Survey Details', 'Commercial Details']],
@@ -218,12 +290,42 @@ const OnHire = () => {
         [`IMO: ${survey.vesselImo}`, `Time: ${survey.fromTime || '-'}`, `Charterer: ${survey.charterer || '-'}`],
         [`Type: ${survey.type}`, `Status: ${survey.status}`, `Place of Survey: ${survey.location || '-'}`],
         [`Call Sign: ${survey.vesselCallSign || '-'}`, `Master: ${survey.masterName || '-'}`, `Place of Delivery: ${survey.placeOfDelivery || '-'}`],
-        [`C/E: ${survey.chiefEngineerName || '-'}`, ``, ``]
+        [`C/E: ${survey.chiefEngineerName || '-'}`, `Draft FWD: ${survey.draftFwd || 'N/A'} m`, `Draft AFT: ${survey.draftAft || 'N/A'} m`],
+        [`VOY: ${survey.voy || 'N/A'}`, `List: ${survey.list || 'N/A'}°`, `E.R. Temp: ${survey.er || 'N/A'}°C`],
+        [`Thermometer: ${survey.thermometer || 'N/A'}`, ``, ``]
       ],
       theme: 'grid',
       headStyles: { fillColor: [41, 128, 185] },
-      styles: { fontSize: 10, cellPadding: 5 }
+      styles: { fontSize: 8, cellPadding: 3 } // Smaller font to save space
     });
+
+    let lastY = doc.lastAutoTable.finalY + 10;
+
+    // Certificate Table (small font to save space) - moved to page 1
+    autoTable(doc, {
+      startY: lastY,
+      head: [['VESSEL NAME', 'MARSHALL ISLANDS']],
+      body: [
+        ['Port of Registry', 'MAJURO'],
+        ['Gross & Net Tons', '24,087/12,210'],
+        ['Place of Redelivery', 'DLOSP CASABLANCA'],
+        ['Date & Time of Redelivery', '28.09.2025 - 12:00'],
+        ['Place of Survey', 'CASABLANCA'],
+        ['Date & Time Survey Completed', 'CASABLANCA - 15:00']
+      ],
+      theme: 'grid',
+      headStyles: { fillColor: [41, 128, 185], textColor: [255, 255, 255] },
+      bodyStyles: { textColor: [0, 0, 0] },
+      columnStyles: { 0: { cellWidth: 80 }, 1: { cellWidth: 90 } },
+      styles: { fontSize: 7, cellPadding: 2 }, // Very small font to save space
+      margin: { left: 14, right: 14 }
+    });
+
+    // Page 2: Calculated Quantity Tables
+    doc.addPage();
+    doc.setFontSize(16);
+    doc.setTextColor(40, 40, 40);
+    doc.text("CALCULATED QUANTITIES", 105, 20, null, null, "center");
 
     // Préparation des données pour les tables par produit
     const vessel = vessels.find(v => v.imo === survey.vesselImo);
@@ -249,14 +351,14 @@ const OnHire = () => {
       { title: 'LOW SULPHUR MARINE GAS OIL (LSMGO)', filter: type => type.includes('LSMGO') }
     ];
 
-    let lastY = doc.lastAutoTable.finalY + 10;
+    lastY = 30;
 
     fuelCategories.forEach(cat => {
       const rows = processedSoundings.filter(s => cat.filter((s.fuelType || '').toUpperCase()));
-      
+
       if (rows.length > 0) {
         const totalWeight = rows.reduce((sum, r) => sum + r.weight, 0);
-        
+
         const tableBody = rows.map(r => [
           r.tankName,
           r.fuelType,
@@ -292,49 +394,19 @@ const OnHire = () => {
       }
     });
 
-    // CERTIFICATE OF OFF-HIRE BUNKER QUANTITY REPORT
-    // Ajouter une nouvelle page si nécessaire
-    if (lastY > 200) {
-      doc.addPage();
-      lastY = 30;
-    } else {
-      lastY += 20;
-    }
-
-    // Titre du rapport certificat
-    doc.setFontSize(12);
+    // Page 3: Signatures
+    doc.addPage();
+    doc.setFontSize(16);
     doc.setTextColor(40, 40, 40);
-    doc.setFont(undefined, 'bold');
-    doc.text("CERTIFICATE OF OFF-HIRE BUNKER QUANTITY", 105, lastY, null, null, "center");
-    lastY += 10;
+    doc.text("SIGNATURES", 105, 20, null, null, "center");
 
-    // Table principale du certificat
-    autoTable(doc, {
-      startY: lastY,
-      head: [['VESSEL NAME', 'MARSHALL ISLANDS']],
-      body: [
-        ['Port of Registry', 'MAJURO'],
-        ['Gross & Net Tons', '24,087/12,210'],
-        ['Place of Redelivery', 'DLOSP CASABLANCA'],
-        ['Date & Time of Redelivery', '28.09.2025 - 12:00'],
-        ['Place of Survey', 'CASABLANCA'],
-        ['Date & Time Survey Completed', 'CASABLANCA - 15:00']
-      ],
-      theme: 'grid',
-      headStyles: { fillColor: [41, 128, 185], textColor: [255, 255, 255] },
-      bodyStyles: { textColor: [0, 0, 0] },
-      columnStyles: { 0: { cellWidth: 80 }, 1: { cellWidth: 90 } },
-      styles: { fontSize: 9, cellPadding: 4 },
-      margin: { left: 14, right: 14 }
-    });
-
-    lastY = doc.lastAutoTable.finalY + 8;
+    lastY = 40;
 
     // Texte explicatif
     doc.setFontSize(9);
     doc.setTextColor(0, 0, 0);
     doc.setFont(undefined, 'normal');
-    
+
     const descriptionText = "This is to certify that MV NIKE, which has above mentioned details, Re-delivered between the parties below subject to all terms conditions and exceptions agreed between Owner and Charterers as per governing Charter Party";
     doc.text(descriptionText, 14, lastY, { maxWidth: 180, align: 'justify' });
     lastY += 22;
@@ -348,15 +420,9 @@ const OnHire = () => {
     doc.text("NIKE SHIPPING S.A.", 14, lastY + 15);
     doc.text("29.09.2025", 14, lastY + 20);
 
-    lastY += 28;
+    lastY += 40;
 
-    // Vérifier s'il faut une nouvelle page
-    if (lastY > 220) {
-      doc.addPage();
-      lastY = 30;
-    }
-
-    // Table des bunkers constatés
+    // Bunker quantities section
     doc.setFontSize(10);
     doc.setFont(undefined, 'bold');
     doc.text("The undersigned Master/Surveyor, acting on behalf of PACIFIC BASIN SHIPPING LTD,", 14, lastY);
@@ -365,24 +431,23 @@ const OnHire = () => {
     doc.setFontSize(9);
     doc.text("All bunker tanks were carefully sounded, with the presence of the Chief Engineer and the following", 14, lastY + 10);
     doc.text("quantities found and agreed, as calculated from the vessel's calibration tables.", 14, lastY + 14);
-    
-    lastY += 24;
 
-    // Table de bilan des bunkers
-    autoTable(doc, {
-      startY: lastY,
-      head: [['VLSFO', 'MT', 'Diesel Oil', 'MT', 'MGO', 'MT']],
-      body: [
-        ['473.058', 'Diesel Oil', '0.000', 'MGO', '65.790']
-      ],
-      theme: 'grid',
-      headStyles: { fillColor: [41, 128, 185], textColor: [255, 255, 255] },
-      styles: { fontSize: 9, cellPadding: 4, halign: 'center' },
-      columnStyles: { 0: { cellWidth: 40 }, 1: { cellWidth: 30 }, 2: { cellWidth: 40 }, 3: { cellWidth: 30 }, 4: { cellWidth: 40 }, 5: { cellWidth: 30 } },
-      margin: { left: 14, right: 14 }
-    });
+    lastY += 30;
 
-    lastY = doc.lastAutoTable.finalY + 8;
+    // Bunker quantities listed on separate lines
+    doc.setFontSize(10);
+    doc.setFont(undefined, 'bold');
+    doc.text("Bunker Quantities Found:", 14, lastY);
+    lastY += 8;
+
+    doc.setFont(undefined, 'normal');
+    doc.setFontSize(9);
+    doc.text(`• VLSFO: 473.058 MT`, 20, lastY);
+    lastY += 6;
+    doc.text(`• Diesel Oil: 0.000 MT`, 20, lastY);
+    lastY += 6;
+    doc.text(`• MGO: 65.790 MT`, 20, lastY);
+    lastY += 12;
 
     // Text about calculation
     doc.setFontSize(9);
@@ -391,21 +456,20 @@ const OnHire = () => {
     doc.text(calcText, 14, lastY, { maxWidth: 180, align: 'justify' });
     lastY += 12;
 
-    // Table de consommation
-    autoTable(doc, {
-      startY: lastY,
-      head: [['VLSFO', 'MT', 'Diesel Oil', 'MT', 'MGO', 'MT']],
-      body: [
-        ['0.000', '0.000', '0.000', '0.000', '0.000', '0.000']
-      ],
-      theme: 'grid',
-      headStyles: { fillColor: [41, 128, 185], textColor: [255, 255, 255] },
-      styles: { fontSize: 9, cellPadding: 4, halign: 'center' },
-      columnStyles: { 0: { cellWidth: 40 }, 1: { cellWidth: 30 }, 2: { cellWidth: 40 }, 3: { cellWidth: 30 }, 4: { cellWidth: 40 }, 5: { cellWidth: 30 } },
-      margin: { left: 14, right: 14 }
-    });
+    // Consumption quantities listed on separate lines
+    doc.setFontSize(10);
+    doc.setFont(undefined, 'bold');
+    doc.text("Consumption Quantities:", 14, lastY);
+    lastY += 8;
 
-    lastY = doc.lastAutoTable.finalY + 8;
+    doc.setFont(undefined, 'normal');
+    doc.setFontSize(9);
+    doc.text(`• VLSFO: 0.000 MT`, 20, lastY);
+    lastY += 6;
+    doc.text(`• Diesel Oil: 0.000 MT`, 20, lastY);
+    lastY += 6;
+    doc.text(`• MGO: 0.000 MT`, 20, lastY);
+    lastY += 12;
 
     // Text about expected bunkers
     doc.setFontSize(9);
@@ -414,25 +478,20 @@ const OnHire = () => {
     doc.text(expectedText, 14, lastY, { maxWidth: 180, align: 'left' });
     lastY += 8;
 
-    // Table des bunkers attendus
+    // Expected bunker quantities listed on separate lines
+    doc.setFontSize(10);
     doc.setFont(undefined, 'bold');
-    doc.text("Vessel supplied:", 14, lastY);
-    lastY += 5;
+    doc.text("Expected Bunker Quantities:", 14, lastY);
+    lastY += 8;
 
-    autoTable(doc, {
-      startY: lastY,
-      head: [['VLSFO', 'MT', 'Fuel Oil', 'MT', 'MGO', 'MT']],
-      body: [
-        ['473.058', 'Fuel Oil', '0.000', 'MGO', '65.790']
-      ],
-      theme: 'grid',
-      headStyles: { fillColor: [41, 128, 185], textColor: [255, 255, 255] },
-      styles: { fontSize: 9, cellPadding: 4, halign: 'center' },
-      columnStyles: { 0: { cellWidth: 40 }, 1: { cellWidth: 30 }, 2: { cellWidth: 40 }, 3: { cellWidth: 30 }, 4: { cellWidth: 40 }, 5: { cellWidth: 30 } },
-      margin: { left: 14, right: 14 }
-    });
-
-    lastY = doc.lastAutoTable.finalY + 8;
+    doc.setFont(undefined, 'normal');
+    doc.setFontSize(9);
+    doc.text(`• VLSFO: 473.058 MT`, 20, lastY);
+    lastY += 6;
+    doc.text(`• Fuel Oil: 0.000 MT`, 20, lastY);
+    lastY += 6;
+    doc.text(`• MGO: 65.790 MT`, 20, lastY);
+    lastY += 12;
 
     // Remark section
     doc.setFont(undefined, 'normal');
@@ -440,7 +499,7 @@ const OnHire = () => {
     const remarkText = "REMARK: Master will re-confirm by teles or E-Mail exact delivery time and figures.";
     doc.text(remarkText, 14, lastY, { maxWidth: 180, align: 'left' });
 
-    lastY += 12;
+    lastY += 20;
 
     // Signed section
     doc.setFontSize(10);
@@ -463,36 +522,7 @@ const OnHire = () => {
     doc.line(166, lastY + 32, 212, lastY + 32);
     doc.text("Date", 166, lastY + 36, { align: 'center' });
 
-    lastY += 50;
-
-    // Section Signatures du rapport de survey original
-    // Vérifier s'il reste assez d'espace sur la page, sinon nouvelle page
-    // if (lastY > 240) {
-    //   doc.addPage();
-    //   lastY = 30;
-    // }
-
-    // const sigY = lastY + 10;
-    // doc.setFontSize(10);
-    // doc.setTextColor(0);
-    // doc.setFont(undefined, 'normal');
-    
-    // // Zone 1
-    // doc.text("For the Vessel (Master/C/E)", 40, sigY, { align: "center" });
-    // doc.line(20, sigY + 15, 60, sigY + 15);
-    // doc.text("Name & Signature", 40, sigY + 22, { align: "center" });
-
-    // // Zone 2
-    // doc.text("For the Surveyor", 105, sigY, { align: "center" });
-    // doc.line(85, sigY + 15, 125, sigY + 15);
-    // doc.text("Name & Signature", 105, sigY + 22, { align: "center" });
-
-    // // Zone 3
-    // doc.text("For the Charterer/Rep", 170, sigY, { align: "center" });
-    // doc.line(150, sigY + 15, 190, sigY + 15);
-    // doc.text("Name & Signature", 170, sigY + 22, { align: "center" });
-
-    // doc.save(`Survey_${survey.vesselName}_${survey.date}.pdf`);
+    doc.save(`Survey_${survey.vesselName}_${survey.date}.pdf`);
   };
 
   const handleViewDetails = (survey) => {
@@ -502,7 +532,7 @@ const OnHire = () => {
     setSelectedVessel(vessel);
     
     // Remplir les détails du formulaire
-    setSurveyDetails({
+    reset({
       client: survey.client || '',
       owner: survey.owner || '',
       charterer: survey.charterer || '',
@@ -554,26 +584,13 @@ const OnHire = () => {
       mdo: '',
       lsmgo: ''
     };
-    setSurveyDetails(prev => ({
-      ...prev,
-      logBookEntries: [...(prev.logBookEntries || []), newEntry]
-    }));
+    append(newEntry);
   };
 
-  const handleUpdateLogBookEntry = (entryId, field, value) => {
-    setSurveyDetails(prev => ({
-      ...prev,
-      logBookEntries: prev.logBookEntries.map(entry =>
-        entry.id === entryId ? { ...entry, [field]: value } : entry
-      )
-    }));
-  };
-
-  const handleDeleteLogBookEntry = (entryId) => {
-    setSurveyDetails(prev => ({
-      ...prev,
-      logBookEntries: prev.logBookEntries.filter(entry => entry.id !== entryId)
-    }));
+  // Plus besoin de handleUpdateLogBookEntry car register gère cela
+  
+  const handleDeleteLogBookEntry = (index) => {
+    remove(index);
   };
 
   return (
@@ -681,6 +698,7 @@ const OnHire = () => {
                       <Plus className="w-4 h-4" />
                       Blank Survey
                     </button>
+                    {/* Barre de recherche existante */}
                     <div className="relative">
                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                       <input 
@@ -715,9 +733,51 @@ const OnHire = () => {
                   ))}
                 </div>
 
+                {/* SECTION: Inspection Reports (Full Reports) */}
+                <div className="bg-white rounded-xl border border-slate-200 overflow-hidden mt-8">
+                  <div className="p-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
+                    <h3 className="font-semibold text-slate-800">Inspection Reports (Full Condition Surveys)</h3>
+                    <span className="bg-blue-100 text-blue-800 text-xs font-bold px-2 py-1 rounded-full">{fullReports.length} Reports</span>
+                  </div>
+                  <div className="divide-y divide-slate-100">
+                    {fullReports.length > 0 ? (
+                      fullReports.map(report => (
+                        <div key={report.id} className="p-4 flex flex-wrap md:flex-nowrap items-center gap-6 hover:bg-slate-50 transition-colors">
+                          <div className="w-12 h-12 bg-blue-50 rounded flex items-center justify-center text-blue-500">
+                            <ClipboardCheck className="w-6 h-6" />
+                          </div>
+                          <div className="flex-1 min-w-[200px]">
+                            <p className="font-bold text-slate-900">{report.vesselName}</p>
+                            <p className="text-xs text-slate-500">Created: {new Date(report.createdAt).toLocaleDateString()}</p>
+                          </div>
+                          <div className="flex-1">
+                            <span className="px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-purple-100 text-purple-700">
+                              FULL CONDITION
+                            </span>
+                          </div>
+                          <div className="flex gap-2">
+                            <button 
+                              onClick={() => handleEditFullReport(report)} 
+                              className="px-4 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50 rounded-lg flex items-center gap-2"
+                            >
+                              Ouvrir / Éditer
+                            </button>
+                            <button onClick={() => handleDeleteFullReport(report.id)} className="px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg" title="Supprimer">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="p-6 text-center text-slate-500">Aucun rapport d'inspection complet trouvé.</div>
+                    )}
+                  </div>
+                </div>
+
+                {/* SECTION: Bunker Surveys (Existing) */}
                 <div className="bg-white rounded-xl border border-slate-200 overflow-hidden mt-8">
                   <div className="p-4 bg-slate-50 border-b border-slate-200">
-                    <h3 className="font-semibold text-slate-800">Recent Reports</h3>
+                    <h3 className="font-semibold text-slate-800">Bunker Surveys</h3>
                   </div>
                   <div className="divide-y divide-slate-100">
                     {isLoadingSurveys ? (
@@ -753,7 +813,12 @@ const OnHire = () => {
                             <button onClick={() => handleViewDetails(s)} className="px-4 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50 rounded-lg">
                               Details
                             </button>
-                            <button onClick={() => generateSurveyPDF(s)} className="px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg" title="Télécharger PDF">
+                            <button onClick={() => {
+                              generateSurveyPDF(s).catch(error => {
+                                console.error('Erreur lors de la génération du PDF:', error);
+                                alert('Erreur lors de la génération du PDF. Vérifiez la console pour plus de détails.');
+                              });
+                            }} className="px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg" title="Télécharger PDF">
                               <FileDown className="w-4 h-4" />
                             </button>
                             <button onClick={() => handleDeleteSurvey(s.id)} className="px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg" title="Supprimer">
@@ -790,28 +855,27 @@ const OnHire = () => {
                             <label className="block text-sm font-medium text-slate-700 mb-2">M/V: Vessel Name</label>
                             <input
                               type="text"
-                              value={surveyDetails.vesselNameEditable}
-                              onChange={(e) => setSurveyDetails({ ...surveyDetails, vesselNameEditable: e.target.value })}
-                              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-semibold"
+                              {...register("vesselNameEditable")}
+                              className={`w-full px-3 py-2 border ${errors.vesselNameEditable ? 'border-red-500' : 'border-slate-300'} rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-semibold`}
                               placeholder="Vessel name"
                             />
+                            {errors.vesselNameEditable && <p className="text-red-500 text-xs mt-1">{errors.vesselNameEditable.message}</p>}
                           </div>
                           <div>
                             <label className="block text-sm font-medium text-slate-700 mb-2">IMO Number</label>
                             <input
                               type="text"
-                              value={surveyDetails.vesselImoEditable}
-                              onChange={(e) => setSurveyDetails({ ...surveyDetails, vesselImoEditable: e.target.value })}
-                              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono"
+                              {...register("vesselImoEditable")}
+                              className={`w-full px-3 py-2 border ${errors.vesselImoEditable ? 'border-red-500' : 'border-slate-300'} rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono`}
                               placeholder="IMO Number"
                             />
+                            {errors.vesselImoEditable && <p className="text-red-500 text-xs mt-1">{errors.vesselImoEditable.message}</p>}
                           </div>
                           <div>
                             <label className="block text-sm font-medium text-slate-700 mb-2">Call Sign</label>
                             <input
                               type="text"
-                              value={surveyDetails.vesselCallSignEditable}
-                              onChange={(e) => setSurveyDetails({ ...surveyDetails, vesselCallSignEditable: e.target.value })}
+                              {...register("vesselCallSignEditable")}
                               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono"
                               placeholder="Call Sign"
                             />
@@ -827,8 +891,7 @@ const OnHire = () => {
                             <label className="block text-sm font-medium text-slate-700 mb-2">Client</label>
                             <input
                               type="text"
-                              value={surveyDetails.client}
-                              onChange={(e) => setSurveyDetails({ ...surveyDetails, client: e.target.value })}
+                              {...register("client")}
                               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                               placeholder="0"
                             />
@@ -837,8 +900,7 @@ const OnHire = () => {
                             <label className="block text-sm font-medium text-slate-700 mb-2">Owners</label>
                             <input
                               type="text"
-                              value={surveyDetails.owner}
-                              onChange={(e) => setSurveyDetails({ ...surveyDetails, owner: e.target.value })}
+                              {...register("owner")}
                               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                               placeholder="0"
                             />
@@ -847,8 +909,7 @@ const OnHire = () => {
                             <label className="block text-sm font-medium text-slate-700 mb-2">Charterers</label>
                             <input
                               type="text"
-                              value={surveyDetails.charterer}
-                              onChange={(e) => setSurveyDetails({ ...surveyDetails, charterer: e.target.value })}
+                              {...register("charterer")}
                               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                               placeholder="0"
                             />
@@ -859,8 +920,7 @@ const OnHire = () => {
                             <label className="block text-sm font-medium text-slate-700 mb-2">Master's Name</label>
                             <input
                               type="text"
-                              value={surveyDetails.masterName}
-                              onChange={(e) => setSurveyDetails({ ...surveyDetails, masterName: e.target.value })}
+                              {...register("masterName")}
                               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                               placeholder="Capt. Name"
                             />
@@ -869,8 +929,7 @@ const OnHire = () => {
                             <label className="block text-sm font-medium text-slate-700 mb-2">Chief Engineer</label>
                             <input
                               type="text"
-                              value={surveyDetails.chiefEngineerName}
-                              onChange={(e) => setSurveyDetails({ ...surveyDetails, chiefEngineerName: e.target.value })}
+                              {...register("chiefEngineerName")}
                               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                               placeholder="C/E Name"
                             />
@@ -886,8 +945,7 @@ const OnHire = () => {
                             <label className="block text-sm font-medium text-slate-700 mb-2">From: Date & Time</label>
                             <input
                               type="datetime-local"
-                              value={surveyDetails.fromTime}
-                              onChange={(e) => setSurveyDetails({ ...surveyDetails, fromTime: e.target.value })}
+                              {...register("fromTime")}
                               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                             />
                           </div>
@@ -895,8 +953,7 @@ const OnHire = () => {
                             <label className="block text-sm font-medium text-slate-700 mb-2">To: Date & Time</label>
                             <input
                               type="datetime-local"
-                              value={surveyDetails.toTime}
-                              onChange={(e) => setSurveyDetails({ ...surveyDetails, toTime: e.target.value })}
+                              {...register("toTime")}
                               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                             />
                           </div>
@@ -912,8 +969,7 @@ const OnHire = () => {
                             <input
                               type="number"
                               step="0.01"
-                              value={surveyDetails.draftFwd}
-                              onChange={(e) => setSurveyDetails({ ...surveyDetails, draftFwd: e.target.value })}
+                              {...register("draftFwd")}
                               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                               placeholder="3.00"
                             />
@@ -923,8 +979,7 @@ const OnHire = () => {
                             <input
                               type="number"
                               step="0.01"
-                              value={surveyDetails.draftAft}
-                              onChange={(e) => setSurveyDetails({ ...surveyDetails, draftAft: e.target.value })}
+                              {...register("draftAft")}
                               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                               placeholder="4.00"
                             />
@@ -933,8 +988,7 @@ const OnHire = () => {
                             <label className="block text-sm font-medium text-slate-700 mb-2">VOY</label>
                             <input
                               type="text"
-                              value={surveyDetails.voy}
-                              onChange={(e) => setSurveyDetails({ ...surveyDetails, voy: e.target.value })}
+                              {...register("voy")}
                               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                               placeholder="1"
                             />
@@ -944,8 +998,7 @@ const OnHire = () => {
                             <input
                               type="number"
                               step="0.01"
-                              value={surveyDetails.list}
-                              onChange={(e) => setSurveyDetails({ ...surveyDetails, list: e.target.value })}
+                              {...register("list")}
                               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                               placeholder="2.00"
                             />
@@ -955,8 +1008,7 @@ const OnHire = () => {
                             <input
                               type="number"
                               step="0.1"
-                              value={surveyDetails.er}
-                              onChange={(e) => setSurveyDetails({ ...surveyDetails, er: e.target.value })}
+                              {...register("er")}
                               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                               placeholder="30.00"
                             />
@@ -965,8 +1017,72 @@ const OnHire = () => {
                             <label className="block text-sm font-medium text-slate-700 mb-2">Thermometer</label>
                             <input
                               type="text"
-                              value={surveyDetails.thermometer}
-                              onChange={(e) => setSurveyDetails({ ...surveyDetails, thermometer: e.target.value })}
+                              {...register("thermometer")}
+                              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              placeholder="CIAS"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Body Data Section */}
+                      <div>
+                        <h3 className="text-lg font-semibold text-slate-800 mb-4 pb-2 border-b border-slate-200">Body Data</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-2">Draft FWD</label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              {...register("draftFwd")}
+                              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              placeholder="3.00"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-2">Draft AFT</label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              {...register("draftAft")}
+                              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              placeholder="4.00"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-2">VOY</label>
+                            <input
+                              type="text"
+                              {...register("voy")}
+                              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              placeholder="1"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-2">List</label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              {...register("list")}
+                              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              placeholder="2.00"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-2">E.R. Temperature</label>
+                            <input
+                              type="number"
+                              step="0.1"
+                              {...register("er")}
+                              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              placeholder="30.00"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-2">Thermometer</label>
+                            <input
+                              type="text"
+                              {...register("thermometer")}
                               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                               placeholder="CIAS"
                             />
@@ -983,8 +1099,7 @@ const OnHire = () => {
                               <label className="block text-sm font-medium text-slate-700 mb-2">Place of Survey</label>
                               <input
                                 type="text"
-                                value={surveyDetails.location}
-                                onChange={(e) => setSurveyDetails({ ...surveyDetails, location: e.target.value })}
+                                {...register("location")}
                                 className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                 placeholder="Port of survey"
                               />
@@ -993,8 +1108,7 @@ const OnHire = () => {
                               <label className="block text-sm font-medium text-slate-700 mb-2">Place of Delivery</label>
                               <input
                                 type="text"
-                                value={surveyDetails.placeOfDelivery}
-                                onChange={(e) => setSurveyDetails({ ...surveyDetails, placeOfDelivery: e.target.value })}
+                                {...register("placeOfDelivery")}
                                 className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                 placeholder="Port of delivery"
                               />
@@ -1002,8 +1116,7 @@ const OnHire = () => {
                             <div>
                               <label className="block text-sm font-medium text-slate-700 mb-2">Survey Type</label>
                               <select 
-                                value={surveyDetails.surveyType}
-                                onChange={(e) => setSurveyDetails({ ...surveyDetails, surveyType: e.target.value })}
+                                {...register("surveyType")}
                                 className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
                               >
                                 <option>ONHIRE SURVEY</option>
@@ -1042,14 +1155,13 @@ const OnHire = () => {
                                 </tr>
                               </thead>
                               <tbody>
-                                {surveyDetails.logBookEntries && surveyDetails.logBookEntries.length > 0 ? (
-                                  surveyDetails.logBookEntries.map((entry) => (
+                                {fields.length > 0 ? (
+                                  fields.map((entry, index) => (
                                     <tr key={entry.id} className="border-b border-slate-200 hover:bg-slate-50">
                                       <td className="px-4 py-3">
                                         <input
                                           type="text"
-                                          value={entry.pilotStation}
-                                          onChange={(e) => handleUpdateLogBookEntry(entry.id, 'pilotStation', e.target.value)}
+                                          {...register(`logBookEntries.${index}.pilotStation`)}
                                           className="w-full px-2 py-1 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                           placeholder="Station name"
                                         />
@@ -1057,8 +1169,7 @@ const OnHire = () => {
                                       <td className="px-4 py-3">
                                         <input
                                           type="text"
-                                          value={entry.time}
-                                          onChange={(e) => handleUpdateLogBookEntry(entry.id, 'time', e.target.value)}
+                                          {...register(`logBookEntries.${index}.time`)}
                                           className="w-full px-2 py-1 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                           placeholder="HH:MM"
                                         />
@@ -1066,16 +1177,14 @@ const OnHire = () => {
                                       <td className="px-4 py-3">
                                         <input
                                           type="date"
-                                          value={entry.date}
-                                          onChange={(e) => handleUpdateLogBookEntry(entry.id, 'date', e.target.value)}
+                                          {...register(`logBookEntries.${index}.date`)}
                                           className="w-full px-2 py-1 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                         />
                                       </td>
                                       <td className="px-4 py-3">
                                         <input
                                           type="number"
-                                          value={entry.vlsfo}
-                                          onChange={(e) => handleUpdateLogBookEntry(entry.id, 'vlsfo', e.target.value)}
+                                          {...register(`logBookEntries.${index}.vlsfo`)}
                                           className="w-full px-2 py-1 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                           placeholder="0"
                                           step="0.01"
@@ -1084,8 +1193,7 @@ const OnHire = () => {
                                       <td className="px-4 py-3">
                                         <input
                                           type="number"
-                                          value={entry.hsfo}
-                                          onChange={(e) => handleUpdateLogBookEntry(entry.id, 'hsfo', e.target.value)}
+                                          {...register(`logBookEntries.${index}.hsfo`)}
                                           className="w-full px-2 py-1 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                           placeholder="0"
                                           step="0.01"
@@ -1094,8 +1202,7 @@ const OnHire = () => {
                                       <td className="px-4 py-3">
                                         <input
                                           type="number"
-                                          value={entry.mdo}
-                                          onChange={(e) => handleUpdateLogBookEntry(entry.id, 'mdo', e.target.value)}
+                                          {...register(`logBookEntries.${index}.mdo`)}
                                           className="w-full px-2 py-1 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                           placeholder="0"
                                           step="0.01"
@@ -1104,8 +1211,7 @@ const OnHire = () => {
                                       <td className="px-4 py-3">
                                         <input
                                           type="number"
-                                          value={entry.lsmgo}
-                                          onChange={(e) => handleUpdateLogBookEntry(entry.id, 'lsmgo', e.target.value)}
+                                          {...register(`logBookEntries.${index}.lsmgo`)}
                                           className="w-full px-2 py-1 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                           placeholder="0"
                                           step="0.01"
@@ -1113,7 +1219,7 @@ const OnHire = () => {
                                       </td>
                                       <td className="px-4 py-3 text-center">
                                         <button
-                                          onClick={() => handleDeleteLogBookEntry(entry.id)}
+                                          onClick={() => handleDeleteLogBookEntry(index)}
                                           className="text-red-600 hover:text-red-800 font-medium text-sm transition-colors"
                                         >
                                           <Trash2 className="w-4 h-4 inline" />
@@ -1279,19 +1385,83 @@ const OnHire = () => {
                             <td className="px-6 py-4">
                               <span className="px-2 py-1 rounded-full bg-green-100 text-green-700 text-[10px] font-bold">IN SERVICE</span>
                             </td>
-                            <td className="px-6 py-4">
-                              <button 
+                          <td className="px-6 py-4 flex items-center gap-4">
+                              <button
                                 onClick={() => setDetailedVessel(v)}
                                 className="text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1 transition-colors"
                               >
                                 View Details
-                                <ArrowRight className="w-3 h-3" />
+                            </button>
+                            <button
+                              onClick={() => {
+                                setSelectedVessel(v);
+                                setActiveTab('pictures');
+                              }}
+                              className="text-indigo-600 hover:text-indigo-800 font-medium flex items-center gap-1 transition-colors"
+                            >
+                              Créer Rapport Photo
                               </button>
                             </td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
+                  </div>
+                </div>
+
+                {/* Recent Surveys Section */}
+                <div className="bg-white rounded-xl border border-slate-200 overflow-hidden mt-8">
+                  <div className="p-4 bg-slate-50 border-b border-slate-200">
+                    <h3 className="font-semibold text-slate-800">Recent Surveys</h3>
+                  </div>
+                  <div className="divide-y divide-slate-100">
+                    {isLoadingSurveys ? (
+                      <div className="p-6 text-center text-slate-500">Chargement des rapports...</div>
+                    ) : surveys.length > 0 ? (
+                      surveys.slice(0, 5).map(s => (
+                        <div key={s.id} className="p-4 flex flex-wrap md:flex-nowrap items-center gap-6 hover:bg-slate-50 transition-colors">
+                          <div className="w-12 h-12 bg-slate-100 rounded flex items-center justify-center text-slate-400">
+                            <ClipboardCheck className="w-6 h-6" />
+                          </div>
+                          <div className="flex-1 min-w-[200px]">
+                            <p className="font-bold text-slate-900">{s.vesselName}</p>
+                            <p className="text-xs text-slate-500">{s.date} • {s.location}</p>
+                          </div>
+                          <div className="flex-1">
+                            <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                              s.type === SurveyType.ONHIRE ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+                            }`}>
+                              {s.type}
+                            </span>
+                          </div>
+                          <div className="flex gap-8">
+                            <div className="text-right">
+                              <p className="text-xs text-slate-400 uppercase font-bold">HFO ROB</p>
+                              <p className="font-mono font-bold text-slate-900">{s.totalHFO} MT</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-xs text-slate-400 uppercase font-bold">MGO ROB</p>
+                              <p className="font-mono font-bold text-slate-900">{s.totalMGO} MT</p>
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <button onClick={() => handleViewDetails(s)} className="px-4 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50 rounded-lg">
+                              Details
+                            </button>
+                            <button onClick={() => {
+                              generateSurveyPDF(s).catch(error => {
+                                console.error('Erreur lors de la génération du PDF:', error);
+                                alert('Erreur lors de la génération du PDF. Vérifiez la console pour plus de détails.');
+                              });
+                            }} className="px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg" title="Télécharger PDF">
+                              <FileDown className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="p-6 text-center text-slate-500">Aucun rapport trouvé pour votre compte. Créez-en un !</div>
+                    )}
                   </div>
                 </div>
               </>
@@ -1569,6 +1739,16 @@ const OnHire = () => {
               </div>
             )}
           </div>
+        )}
+
+        {/* PICTURES REPORT TAB */}
+        {activeTab === 'pictures' && (
+          <FullReport
+            vessel={selectedVessel || detailedVessel}
+            initialData={selectedReport}
+            onCancel={() => { setSelectedVessel(null); setSelectedReport(null); setActiveTab('surveys'); }}
+            onSaved={() => { setSelectedVessel(null); setSelectedReport(null); setActiveTab('surveys'); }}
+          />
         )}
 
       </div>
